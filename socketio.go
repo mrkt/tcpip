@@ -26,7 +26,12 @@ import (
 	"net/http"
 
 	"github.com/googollee/go-socket.io"
+	"github.com/mrkt/cellgo/interfaces"
 )
+
+type SocketIO struct {
+	a interfaces.A_SocketIO
+}
 
 type socketConf struct {
 	Conn    string `json:"Conn"`    //Connection function name
@@ -37,7 +42,7 @@ type socketConf struct {
 	Pull    string `json:"Pull"`    //Pull content function name
 }
 
-func RunSocketIO() {
+func (s *SocketIO) RunSocketIO() {
 	for _, v := range Tcp[SOCKETIO] {
 		go func(v *TcpRun) {
 			socketConf := &socketConf{}
