@@ -27,8 +27,8 @@ const (
 )
 
 var (
-	BindExchange map[int]*TcpBind
-	BindQueue    map[int]*TcpBind
+	BindExchange map[int]*TcpBind = make(map[int]*TcpBind)
+	BindQueue    map[int]*TcpBind = make(map[int]*TcpBind)
 )
 
 func init() {
