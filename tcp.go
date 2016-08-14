@@ -22,7 +22,6 @@ package tcpip
 
 import (
 	"github.com/googollee/go-socket.io"
-	"github.com/mrkt/cellgo/interfaces"
 )
 
 //const TcpType
@@ -46,11 +45,7 @@ type TcpRun struct {
 	Handle  interface{} //conn handle
 }
 
-type Tcpinter struct {
-	a interfaces.A_Tcp
-}
-
-func (t *Tcpinter) RegisterTcp(tcpType int, addr string, route string, tcpName string, tcpConf string) error {
+func RegisterTcp(tcpType int, addr string, route string, tcpName string, tcpConf string) error {
 	var (
 		handle interface{}
 		err    error
