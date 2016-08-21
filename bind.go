@@ -21,22 +21,26 @@
 package tcpip
 
 import (
+	"errors"
+
 	"github.com/mrkt/cellgo"
 )
 
 //const bindType
 const (
 	NEWEXCHANGE = iota
+	REGQUEUE
+	CHECKQUEUE
+	PUSH
+	PULL
 )
 
 var (
-	BindExchange map[int]*TcpBind = make(map[int]*TcpBind)
-	BindQueue    map[int]*TcpBind = make(map[int]*TcpBind)
+	Bind map[int]*TcpBind = make(map[int]*TcpBind)
 )
 
 func init() {
-	BindExchange[SOCKETIO] = &TcpBind{TcpType: SOCKETIO, BindMaps: make(map[string]*bindInfo, 10)}
-	BindQueue[SOCKETIO] = &TcpBind{TcpType: SOCKETIO, BindMaps: make(map[string]*bindInfo, 10)}
+	Bind[SOCKETIO] = &TcpBind{TcpType: SOCKETIO, BindMaps: make(map[string]*bindInfo, 10)}
 }
 
 // TcpBind type.
@@ -61,7 +65,27 @@ func (tb *TcpBind) RegisterHandlers(bindType int, eventName string, controllerNa
 	switch bindType {
 	case NEWEXCHANGE:
 		m = map[string]func(string, interface{}) (interface{}, error){
-			"NewExchange": tb.NewExchange,
+			"New": tb.Happen,
+		}
+		break
+	case REGQUEUE:
+		m = map[string]func(string, interface{}) (interface{}, error){
+			"Reg": tb.Happen,
+		}
+		break
+	case CHECKQUEUE:
+		m = map[string]func(string, interface{}) (interface{}, error){
+			"Check": tb.Happen,
+		}
+		break
+	case PUSH:
+		m = map[string]func(string, interface{}) (interface{}, error){
+			"Push": tb.BatchHappens,
+		}
+		break
+	case PULL:
+		m = map[string]func(string, interface{}) (interface{}, error){
+			"Pull": tb.Happen,
 		}
 		break
 	default:
@@ -85,10 +109,49 @@ func (tb *TcpBind) ExchangeHandler(code string, h func(string, interface{}) (int
 	}
 }
 
-func (tb *TcpBind) NewExchange(code string, value interface{}) (interface{}, error) {
-	res, err := cellgo.Events[tb.BindMaps[code].eventName].EventRead(tb.BindMaps[code].controllerName, tb.BindMaps[code].funcName)
+//Perform binding event only Happen
+func (tb *TcpBind) Happen(code string, value interface{}) (interface{}, error) {
+	res, err := cellgo.Events[tb.BindMaps[code].eventName].EventRead(tb.BindMaps[code].controllerName, tb.BindMaps[code].funcName, value)
 	if err != nil {
 		return nil, err
+	}
+	return res, nil
+}
+
+//Perform binding event batch Happens
+func (tb *TcpBind) BatchHappens(code string, value interface{}) (interface{}, error) {
+	happens, err := tb.findHappen(code)
+	if err != nil {
+		return nil, err
+	}
+	var res map[string]map[string]string = make(map[string]map[string]string)
+	for _, v := range happens {
+		hs, err := tb.happens(code, v, value)
+		if err != nil {
+			return nil, err
+		}
+		res[v] = hs.(map[string]string)
+	}
+	return res, nil
+}
+
+//Perform binding event batch Happens's one
+func (tb *TcpBind) happens(code string, title string, value interface{}) (interface{}, error) {
+	res, err := cellgo.Events[tb.BindMaps[code].eventName].EventRead(title, tb.BindMaps[code].funcName, value)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+//Find binding event batch Happens's title
+func (tb *TcpBind) findHappen(code string) ([]string, error) {
+	var res []string
+	for k, _ := range cellgo.Events[tb.BindMaps[code].eventName].Happened {
+		res = append(res, k)
+	}
+	if res == nil {
+		return nil, errors.New("The Happen is not found.")
 	}
 	return res, nil
 }

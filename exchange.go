@@ -21,6 +21,7 @@
 package tcpip
 
 import (
+	"errors"
 	"log"
 	"time"
 )
@@ -42,7 +43,7 @@ newEX:
 		log.Println("Try to start Tcp Exchage ...")
 	}
 	ExchangeMap[tcpType] = exchange
-	log.Println("Tcp Exchage has been started.")
+	log.Println("Tcp Exchange has been started.")
 }
 
 //Exchange Operation type
@@ -52,6 +53,7 @@ type exchanges struct {
 	Queue          map[string]*Queue //Exchange's Queue
 	PushedNum      int               //Exchange's total push
 	PulledNum      int               //Exchange's total pull
+	Pushed         map[string]bool   //Exchange's total pulled
 }
 
 //Exchange Operation type
@@ -62,7 +64,7 @@ type Exchange struct {
 
 //Create a Exchange
 func (e *Exchange) NewExchange(tcpType int) (bool, error) {
-	res, err := BindExchange[tcpType].BindMaps["NewExchange"].handler("NewExchange", nil)
+	res, err := Bind[tcpType].BindMaps["New"].handler("New", nil)
 	if err != nil {
 		return false, err
 	}
@@ -74,6 +76,7 @@ func (e *Exchange) NewExchange(tcpType int) (bool, error) {
 			Queue:          make(map[string]*Queue),
 			PushedNum:      0,
 			PulledNum:      0,
+			Pushed:         make(map[string]bool),
 		}
 	}
 	return true, nil
@@ -92,4 +95,35 @@ func (e *Exchange) DestroyExchange(number string) (bool, error) {
 //Allow an Queue to enter the Exchange
 func (e *Exchange) IncreaseQueue(queue *Queue, carryInfo string) (bool, error) {
 	return true, nil
+}
+
+func (e *exchanges) PushQueue(tcpType int, value interface{}) (interface{}, error) {
+	res, err := Bind[tcpType].BindMaps["Push"].handler("Push", value)
+	if err != nil {
+		return false, err
+	}
+	//exchange Re assembly
+	var result []string
+	push := res.(map[string]map[string]string)
+	for hk, hp := range push {
+		for k, p := range hp {
+			if !e.Pushed[hk] {
+				if e.ExchangeNumber == k {
+					result = append(result, p)
+					e.PushedNum++
+				}
+			}
+		}
+		e.Pushed[hk] = true
+	}
+	return result, nil
+}
+
+func (e *exchanges) PullQueue(tcpType int, value interface{}) (interface{}, error) {
+	res, err := Bind[tcpType].BindMaps["Pull"].handler("Pull", value)
+	if err != nil {
+		return false, errors.New("The Data is error.")
+	}
+	e.PulledNum++
+	return res, nil
 }

@@ -22,9 +22,10 @@ package tcpip
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log"
 	"net/http"
+
 	"time"
 
 	"github.com/googollee/go-socket.io"
@@ -37,10 +38,21 @@ type socketConf struct {
 	Auth    string `json:"Auth"`    //Auth function name
 	Push    string `json:"Push"`    //Push content function name
 	Pull    string `json:"Pull"`    //Pull content function name
+	Check   string `json:"Check"`   //Check content function name
+}
+
+type from struct {
+	Carry string `json:"Carry"` //Connection function name
+	Value string `json:"Value"` //Disconnection function name
+}
+
+type back struct {
+	State   int    `json:"State"`   //Connection function name
+	Message string `json:"Message"` //Disconnection function name
 }
 
 var (
-	initNum int = 1
+	initBool bool = true
 )
 
 func RunSocketIO() {
@@ -48,6 +60,10 @@ func RunSocketIO() {
 		go func(v *TcpRun) {
 			//CreateExchange
 			CreateExchange(SOCKETIO)
+			//fmt.Println(ExchangeMap[SOCKETIO].Exchanges["2"].ExchangeName)
+			//Queues.RegQueue(SOCKETIO, "42")
+			//Queues.CheckQueue(SOCKETIO, "326700")
+			//ExchangeMap[SOCKETIO].Exchanges["4"].PullQueue(SOCKETIO, "4")
 
 			socketConf := &socketConf{}
 			err := json.Unmarshal([]byte(v.TcpConf), socketConf)
@@ -58,23 +74,68 @@ func RunSocketIO() {
 
 			server := v.Handle.(*socketio.Server)
 			server.On(socketConf.Conn, func(so socketio.Socket) {
-				so.Join("Seckill")
-				if initNum == 1 {
+				//so.Join("Seckill")
+				if initBool == true {
 					go func(so socketio.Socket) {
 						for {
-							so.BroadcastTo("Seckill", "push", "Hello!")
-							time.Sleep(time.Second * 4)
-							fmt.Println("Hello")
+							//Exchange push
+							for k, v := range ExchangeMap[SOCKETIO].Exchanges {
+								res, err := v.PushQueue(SOCKETIO, "")
+								if err == nil {
+									for _, vr := range res.([]string) {
+										callback := "{\"State\":\"1\",\"Message\":" + vr + "}"
+										so.BroadcastTo(k, "push", callback)
+
+									}
+								}
+							}
+							time.Sleep(time.Second * 1) //stop 1 sec check)
 						}
 					}(so)
-					initNum = 0
+					initBool = false
 				}
-				log.Println("on connection")
+				//log.Println("on connection")
+				so.On(socketConf.Check, func(msg string) string {
+					res, err := Queues.RegQueue(SOCKETIO, msg)
+					if err != nil {
+						callback, _ := callback(0, err.Error())
+						return callback
+					}
+					result := res.(map[string]string)
+					//callback, _ := callback(1, result["json"])
+					callback := "{\"State\":\"1\",\"Message\":" + result["json"] + "}"
+					so.Join(result["exchange"])
+					return callback
+
+				})
+
 				so.On(socketConf.Pull, func(msg string) string {
-					return msg
+					//Decomposition message
+					fromInfo := &from{}
+					err = json.Unmarshal([]byte(msg), fromInfo)
+					if err != nil {
+						callback, _ := callback(0, errors.New("The Data is error.").Error())
+						return callback
+					}
+					//Exchange pull
+					res, err := Queues.CheckQueue(SOCKETIO, fromInfo.Carry)
+					if err != nil {
+						callback, _ := callback(0, err.Error())
+						return callback
+					}
+					info := res.(map[string]string)
+					info["Value"] = fromInfo.Value
+					resPull, errPull := ExchangeMap[SOCKETIO].Exchanges[info["Exchange"]].PullQueue(SOCKETIO, info)
+					if errPull != nil {
+						callback, _ := callback(0, err.Error())
+						return callback
+					}
+					callback, _ := callback(1, resPull.(string))
+
+					return callback
 				})
 				so.On(socketConf.Disconn, func() {
-					log.Println("on disconnect")
+					//log.Println("on disconnect")
 				})
 			})
 			server.On(socketConf.Error, func(so socketio.Socket, err error) {
@@ -106,5 +167,17 @@ func checkDefault(s *socketConf) {
 		fallthrough
 	case s.Pull == "":
 		s.Pull = "pull"
+		fallthrough
+	case s.Check == "":
+		s.Check = "check"
 	}
+}
+
+func callback(state int, message string) (string, error) {
+	callback := back{state, message}
+	res, err := json.Marshal(callback)
+	if err != nil {
+		return "", err
+	}
+	return string(res), nil
 }
